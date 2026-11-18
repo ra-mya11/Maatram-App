@@ -5,23 +5,43 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { adminEvents, defaultDraft, type AdminEvent, type EventDraft } from "@/data/admin-mock";
+import {
+  createOpportunity,
+  getPulseUser,
+  loginPulseUser,
+  publishOpportunity,
+  toPulseEvent,
+  type ApiOpportunity,
+  type PulseUser,
+} from "@/lib/pulse-api";
 
 type Sent = { eventId: string; tier: number; count: number };
+type PulseSession = {
+  status: "checking" | "signed-out" | "signed-in";
+  token: string | null;
+  user: PulseUser | null;
+  error: string | null;
+};
 type State = {
   draft: EventDraft;
   update: (patch: Partial<EventDraft>) => void;
   resetDraft: () => void;
   events: AdminEvent[];
   published: AdminEvent | null;
-  publish: () => AdminEvent;
+  publish: () => Promise<AdminEvent>;
   sent: Sent[];
   recordSent: (s: Sent) => void;
+  pulseSession: PulseSession;
+  signInToPulse: (email: string, password: string) => Promise<void>;
+  signOutOfPulse: () => void;
 };
 const Ctx = createContext<State | null>(null);
 const KEY = "maatram-admin-state";
+const PULSE_TOKEN_KEY = "maatram-pulse-token";
 
 export function AdminState({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<EventDraft>(defaultDraft);
@@ -29,6 +49,36 @@ export function AdminState({ children }: { children: ReactNode }) {
   const [published, setPublished] = useState<AdminEvent | null>(null);
   const [sent, setSent] = useState<Sent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [pulseSession, setPulseSession] = useState<PulseSession>({
+    status: "checking",
+    token: null,
+    user: null,
+    error: null,
+  });
+  const pendingPublish = useRef<{ draftKey: string; opportunity: ApiOpportunity } | null>(null);
+
+  useEffect(() => {
+    const token = sessionStorage.getItem(PULSE_TOKEN_KEY);
+    if (!token) {
+      setPulseSession({ status: "signed-out", token: null, user: null, error: null });
+      return;
+    }
+
+    void getPulseUser(token)
+      .then((user) => setPulseSession({ status: "signed-in", token, user, error: null }))
+      .catch((error: unknown) => {
+        sessionStorage.removeItem(PULSE_TOKEN_KEY);
+        setPulseSession({
+          status: "signed-out",
+          token: null,
+          user: null,
+          error:
+            error instanceof Error
+              ? error.message
+              : "The saved admin session could not be verified.",
+        });
+      });
+  }, []);
 
   useEffect(() => {
     try {
@@ -75,25 +125,36 @@ export function AdminState({ children }: { children: ReactNode }) {
     setSent((o) => [...o, s]);
   }, []);
 
-  const publish = useCallback(() => {
-    const ev: AdminEvent = {
-      id: `${draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString(36)}`,
-      name: draft.name,
-      category: draft.type,
-      status: "Live",
-      date: draft.date,
-      location: draft.location.replace("Tamil Nadu", "TN"),
-      fullLocation: draft.location,
-      time: draft.time,
-      registered: 0,
-      needed: draft.volunteers,
-      image: draft.image ?? defaultDraft.image!,
-      tags: draft.tags.map((t) => t.toLowerCase()),
-    };
+  const signInToPulse = useCallback(async (email: string, password: string) => {
+    const { token, user } = await loginPulseUser(email, password);
+    sessionStorage.setItem(PULSE_TOKEN_KEY, token);
+    setPulseSession({ status: "signed-in", token, user, error: null });
+  }, []);
+
+  const signOutOfPulse = useCallback(() => {
+    sessionStorage.removeItem(PULSE_TOKEN_KEY);
+    setPulseSession({ status: "signed-out", token: null, user: null, error: null });
+  }, []);
+
+  const publish = useCallback(async () => {
+    if (!pulseSession.token) {
+      throw new Error("Sign in with an admin or organiser account before publishing.");
+    }
+
+    const draftKey = JSON.stringify(draft);
+    let opportunity =
+      pendingPublish.current?.draftKey === draftKey ? pendingPublish.current.opportunity : null;
+    if (!opportunity) {
+      opportunity = await createOpportunity(pulseSession.token, draft);
+      pendingPublish.current = { draftKey, opportunity };
+    }
+    await publishOpportunity(pulseSession.token, opportunity.id);
+    const ev = toPulseEvent({ ...opportunity, status: "OPEN", broadcastStopped: false });
+    pendingPublish.current = null;
     setCreated((c) => [ev, ...c]);
     setPublished(ev);
     return ev;
-  }, [draft]);
+  }, [draft, pulseSession.token]);
 
   const events = useMemo(() => [...created, ...adminEvents], [created]);
 
@@ -107,8 +168,23 @@ export function AdminState({ children }: { children: ReactNode }) {
       publish,
       sent,
       recordSent,
+      pulseSession,
+      signInToPulse,
+      signOutOfPulse,
     }),
-    [draft, update, resetDraft, events, published, publish, sent, recordSent],
+    [
+      draft,
+      update,
+      resetDraft,
+      events,
+      published,
+      publish,
+      sent,
+      recordSent,
+      pulseSession,
+      signInToPulse,
+      signOutOfPulse,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

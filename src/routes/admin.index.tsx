@@ -21,10 +21,16 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminFrame, Chip, Progress } from "@/components/admin/admin-ui";
 import { useAdmin } from "@/components/admin/AdminState";
 import { adminStats, fillPercent, pendingActions } from "@/data/admin-mock";
+import {
+  getAdminNotifications,
+  markAdminNotificationRead,
+  SOCKET_URL,
+  type StudentNotification,
+} from "@/lib/student-api";
 import { seo } from "@/lib/seo";
 import avatar from "@/assets/admin/admin-profile-avatar.png";
 import logoBadge from "@/assets/admin/maatram-logo-badge.png";
@@ -47,13 +53,56 @@ const pendingIcons = {
 };
 
 function AdminDashboard() {
-  const { events, published, sent } = useAdmin();
+  const { events, published, sent, pulseSession } = useAdmin();
   const [menu, setMenu] = useState(false);
   const [bell, setBell] = useState(false);
+  const [apiNotifs, setApiNotifs] = useState<StudentNotification[]>([]);
+  const socketRef = useRef<{ disconnect: () => void } | null>(null);
   const ongoing = events.find((e) => e.id === "palm-seeds")!;
   const pct = fillPercent(ongoing.registered, ongoing.needed);
-  const notes = [
-    ...(published ? [`“${published.name}” is live for volunteers`] : []),
+
+  const loadNotifs = useCallback(async () => {
+    if (!pulseSession.token) return;
+    try {
+      const data = await getAdminNotifications(pulseSession.token);
+      setApiNotifs(data);
+    } catch {
+      /* ignore – admin may not be signed in yet */
+    }
+  }, [pulseSession.token]);
+
+  useEffect(() => {
+    void loadNotifs();
+  }, [loadNotifs]);
+
+  // Socket.IO real-time updates for admin bell
+  useEffect(() => {
+    if (!pulseSession.token) return;
+    let active = true;
+    import("socket.io-client")
+      .then(({ io }) => {
+        if (!active) return;
+        const socket = io(SOCKET_URL, {
+          auth: { token: pulseSession.token },
+          transports: ["websocket", "polling"],
+        });
+        socketRef.current = socket;
+        socket.on("notification:new", () => void loadNotifs());
+        socket.on("capacity:updated", () => void loadNotifs());
+        socket.on("broadcast:updated", () => void loadNotifs());
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [pulseSession.token, loadNotifs]);
+
+  const unreadCount = apiNotifs.filter((n) => !n.readAt).length;
+
+  const staticNotes = [
+    ...(published ? [`"${published.name}" is live for volunteers`] : []),
     ...sent.map((s) => `Announcement sent to ${s.count.toLocaleString("en-IN")} volunteers`),
     "8 new proofs uploaded for Palm Seeds Plantation",
     "3 fund requests are waiting for approval",
@@ -87,10 +136,35 @@ function AdminDashboard() {
           className="ad-round-btn ad-bell"
           aria-label="Notifications"
           aria-expanded={bell}
-          onClick={() => setBell((b) => !b)}
+          style={{ position: "relative" }}
+          onClick={() => {
+            setBell((b) => !b);
+            void loadNotifs();
+          }}
         >
           <Bell />
-          <i />
+          {unreadCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                background: "#e53e3e",
+                color: "#fff",
+                borderRadius: "50%",
+                fontSize: 10,
+                width: 16,
+                height: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                pointerEvents: "none",
+              }}
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -103,17 +177,37 @@ function AdminDashboard() {
         {bell && (
           <div className="ad-popover ad-popover--notes" role="dialog" aria-label="Notifications">
             <div className="ad-popover__head">
-              <strong>Notifications</strong>
+              <strong>Notifications {unreadCount > 0 && `(${unreadCount} unread)`}</strong>
               <button type="button" aria-label="Close" onClick={() => setBell(false)}>
                 <X size={18} />
               </button>
             </div>
-            {notes.map((n) => (
-              <p key={n}>
-                <Bell size={16} />
-                {n}
-              </p>
-            ))}
+            {apiNotifs.length > 0
+              ? apiNotifs.slice(0, 10).map((n) => (
+                  <p
+                    key={n.id}
+                    style={{ opacity: n.readAt ? 0.55 : 1, cursor: "pointer", gap: 8, display: "flex", alignItems: "flex-start" }}
+                    onClick={() => {
+                      if (!n.readAt && pulseSession.token) {
+                        void markAdminNotificationRead(pulseSession.token, n.id).then(
+                          () => void loadNotifs(),
+                        );
+                      }
+                    }}
+                  >
+                    <Bell size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <span>
+                      <strong style={{ display: "block", fontSize: 13 }}>{n.title}</strong>
+                      <small style={{ color: "#666" }}>{n.body}</small>
+                    </span>
+                  </p>
+                ))
+              : staticNotes.map((n) => (
+                  <p key={n}>
+                    <Bell size={16} />
+                    {n}
+                  </p>
+                ))}
           </div>
         )}
       </header>
@@ -140,7 +234,7 @@ function AdminDashboard() {
               Welcome back, Admin! <span aria-hidden>👋</span>
             </h1>
           </div>
-          <p>Here’s the overview of today’s volunteering operations.</p>
+          <p>Here's the overview of today's volunteering operations.</p>
           <span className="ad-welcome__rule" aria-hidden />
         </div>
         <img className="ad-welcome__art" src={analyticsArt} alt="" aria-hidden />

@@ -21,6 +21,7 @@ import {
   WizardHeader,
 } from "@/components/admin/admin-ui";
 import { useAdmin } from "@/components/admin/AdminState";
+import { PulseConnectionPanel } from "@/components/admin/PulseConnectionPanel";
 import { validateDetails, validateGuide } from "@/data/admin-mock";
 import { seo } from "@/lib/seo";
 
@@ -40,9 +41,10 @@ const firstLine = (t: string) =>
     .join(", ");
 
 function Review() {
-  const { draft, update, publish } = useAdmin();
+  const { draft, update, publish, pulseSession } = useAdmin();
   const navigate = useNavigate();
   const [editing, setEditing] = useState<null | "summary" | "community">(null);
+  const [publishing, setPublishing] = useState(false);
   const [community, setCommunity] = useState(
     "A dedicated group for communication, updates, attendance, proofs and coordination of this event.",
   );
@@ -52,14 +54,28 @@ function Review() {
     ? `${draft.schedule[0].time.replace(/^0/, "")} – ${draft.schedule[draft.schedule.length - 1]!.time.replace(/^0/, "")}`
     : draft.time;
 
-  const doPublish = () => {
+  const doPublish = async () => {
     const missing = { ...validateDetails(draft), ...validateGuide(draft) };
     if (Object.keys(missing).length) {
       setProblem(Object.values(missing)[0] ?? "");
       return;
     }
-    publish();
-    navigate({ to: "/admin/opportunities/published" });
+    if (pulseSession.status !== "signed-in") {
+      setProblem("Connect with an admin or organiser account before publishing this opportunity.");
+      return;
+    }
+    setPublishing(true);
+    setProblem("");
+    try {
+      await publish();
+      navigate({ to: "/admin/opportunities/published" });
+    } catch (error) {
+      setProblem(
+        error instanceof Error ? error.message : "The opportunity could not be published.",
+      );
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return (
@@ -167,6 +183,7 @@ function Review() {
         <p className="ad-navy">{community}</p>
       </section>
 
+      <PulseConnectionPanel />
       {problem && (
         <p className="ad-error ad-error--box" role="alert">
           {problem}
@@ -180,8 +197,13 @@ function Review() {
         >
           <Pencil /> Edit Details
         </button>
-        <button type="button" className="ad-btn ad-btn--primary" onClick={doPublish}>
-          <Megaphone /> Publish Opportunity
+        <button
+          type="button"
+          className="ad-btn ad-btn--primary"
+          disabled={publishing || pulseSession.status !== "signed-in"}
+          onClick={() => void doPublish()}
+        >
+          <Megaphone /> {publishing ? "Publishing…" : "Publish Opportunity"}
         </button>
       </div>
 

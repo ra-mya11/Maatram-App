@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Menu,
   Bell,
@@ -22,12 +22,14 @@ import { DashboardBlastPopup } from "@/components/DashboardBlastPopup";
 import {
   mockActive as act,
   mockDashboard as d,
-  mockNotifications,
   mockOpportunities,
   mockStudent as s,
 } from "@/data/mock";
 import { seo } from "@/lib/seo";
 import { useMaatramState } from "@/components/MaatramState";
+import { StudentNotifications } from "@/components/StudentNotifications";
+import { registerServiceWorker } from "@/lib/web-push";
+import { SOCKET_URL } from "@/lib/student-api";
 
 export const Route = createFileRoute("/dashboard")({
   head: () =>
@@ -41,6 +43,7 @@ function Dashboard() {
   const navigate = useNavigate();
   const maatramState = useMaatramState();
   const [panel, setPanel] = useState<null | "menu" | "notif" | "contribute" | "joined">(null);
+  const [notificationUnread, setNotificationUnread] = useState(0);
   const [showEntrance, setShowEntrance] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -59,6 +62,31 @@ function Dashboard() {
   });
 
   const [showBlast, setShowBlast] = useState(false);
+  const socketRef = useRef<{ disconnect: () => void } | null>(null);
+
+  // Register service worker for Web Push on first dashboard load
+  useEffect(() => {
+    void registerServiceWorker();
+  }, []);
+
+  // Socket.IO: live capacity/broadcast updates
+  useEffect(() => {
+    const token = sessionStorage.getItem("maatram-student-notification-token");
+    if (!token) return;
+    let active = true;
+    import("socket.io-client").then(({ io }) => {
+      if (!active) return;
+      const socket = io(SOCKET_URL, { auth: { token }, transports: ["websocket", "polling"] });
+      socketRef.current = socket;
+      socket.on("notification:new", () => setNotificationUnread((n) => n + 1));
+      socket.on("capacity:updated", () => { /* live slot updates handled by backend */ });
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -149,11 +177,18 @@ function Dashboard() {
           height={180}
         />
         <button
-          className="mq-dashboard__round-action mq-dashboard__notification"
-          aria-label="Notifications"
+          className={`mq-dashboard__round-action mq-dashboard__notification${notificationUnread ? " has-unread" : ""}`}
+          aria-label={
+            notificationUnread ? `Notifications, ${notificationUnread} unread` : "Notifications"
+          }
           onClick={() => setPanel("notif")}
         >
           <Bell size={27} />
+          {notificationUnread > 0 && (
+            <span className="mq-dashboard__notification-badge">
+              {notificationUnread > 99 ? "99+" : notificationUnread}
+            </span>
+          )}
         </button>
       </header>
 
@@ -400,11 +435,7 @@ function Dashboard() {
           {panel === "notif" && (
             <div className="mq-sheet" onClick={(e) => e.stopPropagation()}>
               <SheetHead title="Notifications" onClose={() => setPanel(null)} />
-              {mockNotifications.map((n) => (
-                <div key={n} className="mq-list-item">
-                  <Bell size={18} color="#d99a00" /> {n}
-                </div>
-              ))}
+              <StudentNotifications onUnreadChange={setNotificationUnread} />
             </div>
           )}
           {(panel === "contribute" || panel === "joined") && (

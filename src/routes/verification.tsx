@@ -1,14 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { A, Hl, Logo, Screen } from "@/components/mq";
 import { mockStudent } from "@/data/mock";
+import { loginStudent } from "@/lib/student-api";
+import { subscribeToPush, registerServiceWorker } from "@/lib/web-push";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/verification")({
   head: () => seo("Verifying Your Maatram ID", "Fetching and verifying your Maatram profile."),
   component: Verifying,
 });
+
+// Demo credentials that match the backend seed data
+const DEMO_IDENTIFIER = "sanjai.r@demo.maatram.local";
+const DEMO_PASSWORD = "Maatram@Student1";
+
+const TOKEN_KEY = "maatram-student-notification-token";
+const USER_KEY = "maatram-student-notification-user";
 
 const steps = [
   { t: "QR Code Scanned", s: `ID Detected: ${mockStudent.maatramId}` },
@@ -20,6 +29,27 @@ const steps = [
 function Verifying() {
   const navigate = useNavigate();
   const [active, setActive] = useState(2);
+  const loginAttempted = useRef(false);
+
+  // On step 2 ("Fetching Your Details"), do the real backend login silently
+  useEffect(() => {
+    if (active !== 2 || loginAttempted.current) return;
+    loginAttempted.current = true;
+    void (async () => {
+      try {
+        const session = await loginStudent(DEMO_IDENTIFIER, DEMO_PASSWORD);
+        sessionStorage.setItem(TOKEN_KEY, session.token);
+        sessionStorage.setItem(USER_KEY, JSON.stringify(session.user));
+        // Register SW and subscribe to push in background — no prompt yet,
+        // the browser will ask for permission when the user opens the bell
+        await registerServiceWorker();
+        void subscribeToPush(session.token);
+      } catch {
+        // Backend may be offline — app still works with mock data
+      }
+    })();
+  }, [active]);
+
   useEffect(() => {
     if (active > steps.length) {
       const t = setTimeout(() => navigate({ to: "/verified" }), 500);

@@ -68,6 +68,27 @@ Everything must work using frontend-only mock data and local state.
 
 The application should run as a complete frontend prototype without requiring backend configuration.
 
+## Connected PULSE notifications
+
+The admin PULSE and opportunity-publish screens can connect to the companion API in
+`../maatram_volunteer_notification`. For local development, set `VITE_API_URL` in the frontend's
+ignored `.env.local` file to `http://127.0.0.1:4000/api`, and allow the frontend origin
+(`http://127.0.0.1:8080`) in the backend's `CORS_ORIGIN`. Restart both servers after changing
+these settings. For a deployed frontend, set `VITE_API_URL` to the backend API base URL, such as
+`https://api.example.org/api`, and allow the deployed frontend origin in the backend's
+`CORS_ORIGIN`.
+
+Sign in to PULSE with an API admin or organiser account. The frontend stores the short-lived JWT
+only in the current browser session. Opportunity publishing, matching, tier escalation, push
+delivery, capacity updates, and waitlist offers remain backend responsibilities. Student phones
+must register their device tokens through the mobile app, and Firebase Admin credentials must stay
+in the backend environment; never put service-account keys in `VITE_*` variables.
+
+The student dashboard notification bell connects to the same API with a student Maatram ID or
+email and password. It shows notifications created for that student by PULSE, refreshes while the
+notification panel is open, and lets the student mark items as read. Phone lock-screen delivery
+still requires the mobile app's registered device token and backend push configuration.
+
 2. DESIGN REFERENCES – STRICT REQUIREMENT
 
 I am attaching:
