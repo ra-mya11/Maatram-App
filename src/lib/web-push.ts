@@ -35,39 +35,60 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 }
 
 export async function subscribeToPush(authToken: string): Promise<boolean> {
-  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return false;
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return false;
-
-    await navigator.serviceWorker.ready;
-
-    const app = getFirebaseApp();
-    const messaging = getMessaging(app);
-
-    // getToken() returns a real FCM registration token — exactly what the backend expects
-    const swReg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
-    const tokenOptions = swReg
-      ? { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg }
-      : { vapidKey: VAPID_KEY };
-    const fcmToken = await getToken(messaging, tokenOptions);
-
-    if (!fcmToken) return false;
-
-    // Register with backend — backend's PushNotificationService handles FCM tokens natively
-    await fetch(`${API_BASE_URL}/notification-devices`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ deviceToken: fcmToken, platform: "web" }),
-    });
-
-    return true;
-  } catch {
-    return false;
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    throw new Error("This browser does not support web push notifications.");
   }
+  if (!window.isSecureContext) {
+    throw new Error("Web push notifications require a secure HTTPS connection.");
+  }
+  if (!("Notification" in window)) {
+    throw new Error("This browser does not support notification permissions.");
+  }
+  if (!VAPID_KEY || Object.values(firebaseConfig).some((value) => !value)) {
+    throw new Error("Web push is not configured. Set the Firebase web app and VAPID variables.");
+  }
+  if (Notification.permission === "denied") {
+    throw new Error(
+      "Notifications are blocked for this site. Allow them in your browser settings.",
+    );
+  }
+
+  // Keep this permission request as the first asynchronous action after the explicit user click.
+  const permission =
+    Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (permission !== "granted") {
+    throw new Error("Notification permission was not granted.");
+  }
+
+  const registration = await registerServiceWorker();
+  if (!registration) {
+    throw new Error("Could not register the notification service worker for this site.");
+  }
+  const activeRegistration = await navigator.serviceWorker.ready;
+  const messaging = getMessaging(getFirebaseApp());
+  const fcmToken = await getToken(messaging, {
+    vapidKey: VAPID_KEY,
+    serviceWorkerRegistration: activeRegistration,
+  });
+
+  if (!fcmToken) {
+    throw new Error("Firebase did not return a web push token. Check the Firebase web push setup.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/notification-devices`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ deviceToken: fcmToken, platform: "web" }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `The notification API could not register this device (${response.status}). Check VITE_API_URL and backend CORS settings.`,
+    );
+  }
+  return true;
 }
 
 export async function unsubscribeFromPush(authToken: string): Promise<void> {

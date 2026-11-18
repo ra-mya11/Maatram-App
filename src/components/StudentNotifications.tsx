@@ -54,6 +54,8 @@ export function StudentNotifications({
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(Boolean(token));
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushStatus, setPushStatus] = useState("");
   const [error, setError] = useState("");
   const socketRef = useRef<{ disconnect: () => void } | null>(null);
 
@@ -68,7 +70,9 @@ export function StudentNotifications({
         setError("");
         setLoading(false);
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not load student notifications.");
+        setError(
+          reason instanceof Error ? reason.message : "Could not load student notifications.",
+        );
         setLoading(false);
       }
     },
@@ -116,14 +120,29 @@ export function StudentNotifications({
       setUser(session.user);
       setPassword("");
       setLoading(true);
-      // Subscribe to Web Push after login
-      void subscribeToPush(session.token);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Unable to sign in to student notifications.",
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function enablePush() {
+    if (!token) return;
+    setPushBusy(true);
+    setPushStatus("");
+    setError("");
+    try {
+      await subscribeToPush(token);
+      setPushStatus("Browser notifications are enabled on this device.");
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not enable browser notifications.",
+      );
+    } finally {
+      setPushBusy(false);
     }
   }
 
@@ -185,10 +204,12 @@ export function StudentNotifications({
             </p>
           )}
           <button className="mq-notif-submit" type="submit" disabled={busy}>
-            {busy ? "Connecting…" : "Enable Notifications"}
+            {busy ? "Connecting…" : "Connect account"}
           </button>
         </form>
-        <small>Your session stays only in this browser tab.</small>
+        <small>
+          After connecting, tap Enable browser notifications and allow the browser prompt.
+        </small>
       </section>
     );
   }
@@ -201,6 +222,22 @@ export function StudentNotifications({
           <LogOut size={15} /> Sign out
         </button>
       </div>
+      <p className="mq-notif-status">
+        Enable push alerts on this device to receive updates when the dashboard is closed.
+      </p>
+      <button
+        type="button"
+        className="mq-notif-submit"
+        disabled={pushBusy}
+        onClick={() => void enablePush()}
+      >
+        <Bell size={16} /> {pushBusy ? "Enabling…" : "Enable browser notifications"}
+      </button>
+      {pushStatus && (
+        <p className="mq-notif-status" role="status">
+          {pushStatus}
+        </p>
+      )}
       {loading && <p className="mq-notif-status">Loading notifications…</p>}
       {!loading && !items.length && (
         <p className="mq-notif-status">No notifications have been sent to this account yet.</p>

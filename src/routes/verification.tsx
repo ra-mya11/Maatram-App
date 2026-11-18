@@ -4,7 +4,6 @@ import { Check } from "lucide-react";
 import { A, Hl, Logo, Screen } from "@/components/mq";
 import { mockStudent } from "@/data/mock";
 import { loginStudent } from "@/lib/student-api";
-import { subscribeToPush, registerServiceWorker } from "@/lib/web-push";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/verification")({
@@ -40,10 +39,6 @@ function Verifying() {
         const session = await loginStudent(DEMO_IDENTIFIER, DEMO_PASSWORD);
         sessionStorage.setItem(TOKEN_KEY, session.token);
         sessionStorage.setItem(USER_KEY, JSON.stringify(session.user));
-        // Register SW and subscribe to push in background — no prompt yet,
-        // the browser will ask for permission when the user opens the bell
-        await registerServiceWorker();
-        void subscribeToPush(session.token);
       } catch {
         // Backend may be offline — app still works with mock data
       }

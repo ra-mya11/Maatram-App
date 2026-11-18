@@ -78,6 +78,15 @@ these settings. For a deployed frontend, set `VITE_API_URL` to the backend API b
 `https://api.example.org/api`, and allow the deployed frontend origin in the backend's
 `CORS_ORIGIN`.
 
+For Railway, set `VITE_API_URL` on the frontend service to the backend service's public URL
+including `/api` (for example, `https://<backend-domain>/api`). Set the frontend's
+`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+`VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`,
+and `VITE_FIREBASE_VAPID_KEY` variables from the Firebase web app configuration. Set the
+backend's `CORS_ORIGIN` to the frontend's public URL. Vite embeds `VITE_*` values at build time,
+so redeploy the frontend after changing them. The backend's `/health` endpoint should return JSON
+when opened at its Railway domain.
+
 Sign in to PULSE with an API admin or organiser account. The frontend stores the short-lived JWT
 only in the current browser session. Opportunity publishing, matching, tier escalation, push
 delivery, capacity updates, and waitlist offers remain backend responsibilities. Student phones
@@ -87,7 +96,11 @@ in the backend environment; never put service-account keys in `VITE_*` variables
 The student dashboard notification bell connects to the same API with a student Maatram ID or
 email and password. It shows notifications created for that student by PULSE, refreshes while the
 notification panel is open, and lets the student mark items as read. Phone lock-screen delivery
-still requires the mobile app's registered device token and backend push configuration.
+still requires the mobile app's registered device token and backend push configuration. Browser
+push permission is requested only after the student connects their account and taps **Enable
+browser notifications** on that device; publishing an opportunity from the admin screen does not
+trigger a permission prompt on students' browsers. Browser push also requires HTTPS, Firebase
+configuration, and the backend to be reachable.
 
 2. DESIGN REFERENCES – STRICT REQUIREMENT
 
