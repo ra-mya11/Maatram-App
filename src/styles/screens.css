@@ -469,17 +469,31 @@
   margin: 18px 0 0;
   border-radius: 28px;
   overflow: hidden;
-  cursor: pointer;
+  aspect-ratio: 4 / 3;
+  background: #080d3a;
 }
-.mq-scanner img {
+.mq-scanner video {
   width: 100%;
+  height: 100%;
+  min-height: 250px;
   display: block;
+  object-fit: cover;
 }
-.mq-scanner__flash {
+.mq-scanner__placeholder {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 230, 0.55), transparent 60%);
-  pointer-events: none;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+.mq-scanner__placeholder span {
+  max-width: 28ch;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .mq-scanner__line {
   position: absolute;
@@ -503,12 +517,16 @@
 }
 .mq-scanner__status {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.55);
-  font-weight: 800;
-  font-size: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #080d3a;
+  font-weight: 700;
+  font-size: 14px;
 }
 .mq-scan-actions {
   display: flex;
@@ -539,6 +557,74 @@
 .mq-scan-action[aria-pressed="true"] > span:first-child {
   background: var(--mq-yellow);
   border-color: var(--mq-yellow);
+}
+.mq-student-auth {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  color: #142047;
+}
+.mq-student-auth h2,
+.mq-student-auth p {
+  margin: 0;
+}
+.mq-student-auth h2 {
+  font-size: 18px;
+}
+.mq-student-auth > p {
+  color: #5b6277;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mq-student-auth form {
+  display: grid;
+  gap: 12px;
+}
+.mq-student-auth label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.mq-student-auth input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #d8dce6;
+  border-radius: 12px;
+  padding: 9px 12px;
+  color: #080d3a;
+  font: inherit;
+}
+.mq-auth-submit {
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #080d3a;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+}
+.mq-auth-submit:disabled {
+  opacity: 0.6;
+}
+.mq-auth-link {
+  justify-self: center;
+  border: 0;
+  padding: 10px;
+  background: transparent;
+  color: #2a1b8f;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mq-auth-error {
+  margin: 10px 0 0;
+  color: #a32121;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 /* Verification */
@@ -684,6 +770,14 @@
   object-fit: cover;
   border-radius: 18px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.mq-profile__placeholder {
+  display: grid;
+  place-items: center;
+  background: #fff4c2;
+  color: #080d3a;
+  font-size: clamp(36px, 10vw, 56px);
+  font-weight: 800;
 }
 .mq-profile h2 {
   margin: 6px 0 8px;

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   markStudentNotificationRead: vi.fn(),
   subscribeToPush: vi.fn(),
   unsubscribeFromPush: vi.fn(),
+  STUDENT_TOKEN_KEY: "maatram-student-notification-token",
+  STUDENT_USER_KEY: "maatram-student-notification-user",
 }));
 
 vi.mock("@/lib/student-api", () => ({
@@ -14,6 +16,8 @@ vi.mock("@/lib/student-api", () => ({
   loginStudent: mocks.loginStudent,
   markStudentNotificationRead: mocks.markStudentNotificationRead,
   SOCKET_URL: "https://api.example.org",
+  STUDENT_TOKEN_KEY: mocks.STUDENT_TOKEN_KEY,
+  STUDENT_USER_KEY: mocks.STUDENT_USER_KEY,
 }));
 
 vi.mock("@/lib/web-push", () => ({
@@ -57,5 +61,23 @@ describe("student push notifications", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Browser notifications are enabled on this device.",
     );
+  });
+
+  it("reuses the QR login session without showing a second account login form", async () => {
+    sessionStorage.setItem(mocks.STUDENT_TOKEN_KEY, "student-jwt");
+    sessionStorage.setItem(
+      mocks.STUDENT_USER_KEY,
+      JSON.stringify({
+        id: "student-1",
+        name: "Student",
+        email: "student@example.org",
+        role: "VOLUNTEER",
+      }),
+    );
+
+    render(<StudentNotifications onUnreadChange={vi.fn()} />);
+
+    expect(await screen.findByText("Notifications for Student")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect account" })).not.toBeInTheDocument();
   });
 });

@@ -93,12 +93,14 @@ delivery, capacity updates, and waitlist offers remain backend responsibilities.
 must register their device tokens through the mobile app, and Firebase Admin credentials must stay
 in the backend environment; never put service-account keys in `VITE_*` variables.
 
-The student dashboard notification bell connects to the same API with a student Maatram ID or
-email and password. It shows notifications created for that student by PULSE, refreshes while the
-notification panel is open, and lets the student mark items as read. Phone lock-screen delivery
-still requires the mobile app's registered device token and backend push configuration. Browser
-push permission is requested only after the student connects their account and taps **Enable
-browser notifications** on that device; publishing an opportunity from the admin screen does not
+Students scan the Maatram ID QR code and sign in with their existing student-account password.
+The frontend authenticates with `/api/student/auth/login` and reuses that session for the student
+dashboard and notification bell; a QR code containing only an ID does not authenticate by itself.
+The bell shows notifications created for that student by PULSE, refreshes while the panel is open,
+and lets the student mark items as read. Phone lock-screen delivery still requires the mobile app's
+registered device token and backend push configuration. Browser push permission is requested only
+after the student taps **Enable notifications & continue** after sign-in, or **Enable browser
+notifications** later from the dashboard; publishing an opportunity from the admin screen does not
 trigger a permission prompt on students' browsers. Browser push also requires HTTPS, Firebase
 configuration, and the backend to be reachable.
 

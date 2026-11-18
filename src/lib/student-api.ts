@@ -1,13 +1,24 @@
 const API_BASE_URL = (import.meta.env["VITE_API_URL"] || "/api").replace(/\/+$/, "");
 
 export const SOCKET_URL = API_BASE_URL.replace(/\/api\/?$/, "");
+export const STUDENT_TOKEN_KEY = "maatram-student-notification-token";
+export const STUDENT_USER_KEY = "maatram-student-notification-user";
 
 export type StudentAccount = {
   id: string;
   name: string;
   email: string;
   role: "VOLUNTEER";
-  profile?: { maatramId: string | null };
+  profile?: {
+    maatramId: string | null;
+    college?: string | null;
+    department?: string | null;
+    degree?: string | null;
+    academicYear?: string | null;
+    city?: string | null;
+    district?: string | null;
+    profilePhoto?: string | null;
+  };
 };
 
 export type StudentNotification = {

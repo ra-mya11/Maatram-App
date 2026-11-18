@@ -5,18 +5,17 @@ import {
   loginStudent,
   markStudentNotificationRead,
   SOCKET_URL,
+  STUDENT_TOKEN_KEY,
+  STUDENT_USER_KEY,
   type StudentAccount,
   type StudentNotification,
 } from "@/lib/student-api";
 import { subscribeToPush, unsubscribeFromPush } from "@/lib/web-push";
 
-const TOKEN_KEY = "maatram-student-notification-token";
-const USER_KEY = "maatram-student-notification-user";
-
 function readStoredUser(): StudentAccount | null {
   if (typeof window === "undefined") return null;
   try {
-    const stored = sessionStorage.getItem(USER_KEY);
+    const stored = sessionStorage.getItem(STUDENT_USER_KEY);
     if (!stored) return null;
     const user = JSON.parse(stored) as StudentAccount;
     return user.role === "VOLUNTEER" && typeof user.name === "string" ? user : null;
@@ -46,7 +45,7 @@ export function StudentNotifications({
   onUnreadChange: (count: number) => void;
 }) {
   const [token, setToken] = useState(() =>
-    typeof window === "undefined" ? null : sessionStorage.getItem(TOKEN_KEY),
+    typeof window === "undefined" ? null : sessionStorage.getItem(STUDENT_TOKEN_KEY),
   );
   const [user, setUser] = useState<StudentAccount | null>(readStoredUser);
   const [items, setItems] = useState<StudentNotification[]>([]);
@@ -114,8 +113,8 @@ export function StudentNotifications({
     setError("");
     try {
       const session = await loginStudent(identifier.trim(), password);
-      sessionStorage.setItem(TOKEN_KEY, session.token);
-      sessionStorage.setItem(USER_KEY, JSON.stringify(session.user));
+      sessionStorage.setItem(STUDENT_TOKEN_KEY, session.token);
+      sessionStorage.setItem(STUDENT_USER_KEY, JSON.stringify(session.user));
       setToken(session.token);
       setUser(session.user);
       setPassword("");
@@ -163,8 +162,8 @@ export function StudentNotifications({
 
   function signOut() {
     if (token) void unsubscribeFromPush(token);
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(STUDENT_TOKEN_KEY);
+    sessionStorage.removeItem(STUDENT_USER_KEY);
     socketRef.current?.disconnect();
     socketRef.current = null;
     setToken(null);

@@ -1,7 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
-import { Flashlight, Image as ImageIcon } from "lucide-react";
-import { A, Hl, Screen, Strokes, TopNav } from "@/components/mq";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
+import { Camera, Image as ImageIcon, QrCode } from "lucide-react";
+import { Hl, Screen, Strokes, TopNav } from "@/components/mq";
+import { loginStudent, STUDENT_TOKEN_KEY, STUDENT_USER_KEY } from "@/lib/student-api";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/login")({
@@ -11,15 +13,112 @@ export const Route = createFileRoute("/login")({
 
 function Scanner() {
   const navigate = useNavigate();
-  const [flash, setFlash] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const [step, setStep] = useState<"scan" | "credentials">("scan");
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [scannerError, setScannerError] = useState("");
+  const [error, setError] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const readerRef = useRef<BrowserQRCodeReader | null>(null);
+  const scannedRef = useRef(false);
 
-  const scan = () => {
-    if (scanning) return;
-    setScanning(true);
-    setTimeout(() => navigate({ to: "/verification" }), 1400);
-  };
+  useEffect(
+    () => () => {
+      controlsRef.current?.stop();
+    },
+    [],
+  );
+
+  function stopCamera() {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    setCameraActive(false);
+  }
+
+  function acceptQr(value: string) {
+    if (scannedRef.current) return;
+    const maatramId = value.trim().toUpperCase();
+    if (!/^[A-Z0-9-]{3,30}$/.test(maatramId)) {
+      setScannerError("This QR code does not contain a valid Maatram ID.");
+      return;
+    }
+
+    scannedRef.current = true;
+    stopCamera();
+    setIdentifier(maatramId);
+    setScannerError("");
+    setError("");
+    setStep("credentials");
+  }
+
+  async function startCamera() {
+    if (!videoRef.current || cameraStarting || cameraActive) return;
+    setScannerError("");
+    scannedRef.current = false;
+    setCameraStarting(true);
+    try {
+      const reader = (readerRef.current ??= new BrowserQRCodeReader());
+      controlsRef.current = await reader.decodeFromVideoDevice(
+        undefined,
+        videoRef.current,
+        (result) => {
+          if (result) acceptQr(result.getText());
+        },
+      );
+      setCameraActive(true);
+    } catch (reason) {
+      setScannerError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not open the camera. Allow camera access or enter your Maatram ID manually.",
+      );
+    } finally {
+      setCameraStarting(false);
+    }
+  }
+
+  async function scanImage(file: File) {
+    setScannerError("");
+    scannedRef.current = false;
+    stopCamera();
+    try {
+      const reader = (readerRef.current ??= new BrowserQRCodeReader());
+      const imageUrl = URL.createObjectURL(file);
+      try {
+        const result = await reader.decodeFromImageUrl(imageUrl);
+        acceptQr(result.getText());
+      } finally {
+        URL.revokeObjectURL(imageUrl);
+      }
+    } catch (reason) {
+      setScannerError(
+        reason instanceof Error
+          ? `Could not read a QR code from that image: ${reason.message}`
+          : "Could not read a Maatram ID QR code from that image.",
+      );
+    }
+  }
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const session = await loginStudent(identifier.trim().toUpperCase(), password);
+      sessionStorage.setItem(STUDENT_TOKEN_KEY, session.token);
+      sessionStorage.setItem(STUDENT_USER_KEY, JSON.stringify(session.user));
+      navigate({ to: "/verification" });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to verify this student account.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <Screen deco="tr" footer="waves">
@@ -31,43 +130,126 @@ function Scanner() {
         <Strokes style={{ right: "2%", top: -36 }} />
       </div>
       <p className="mq-sub">
-        Scan the QR code on your Maatram ID card to login and fetch your details instantly.
+        Scan your Maatram ID and sign in with the password for your student account.
       </p>
-      <div
-        className="mq-scanner"
-        onClick={scan}
-        role="button"
-        aria-label="Tap to scan the Maatram ID"
-      >
-        <img
-          src={`${A}/photos/maatram-id-qr-card-reference.jpg`}
-          alt="Maatram ID card held up to the camera"
-        />
-        {flash && <div className="mq-scanner__flash" />}
-        <div className="mq-scanner__line" />
-        {scanning && <div className="mq-scanner__status">QR detected · MT4507</div>}
-      </div>
-      <div className="mq-scan-actions">
-        <button className="mq-scan-action" aria-pressed={flash} onClick={() => setFlash((f) => !f)}>
-          <span>
-            <Flashlight size={26} />
-          </span>
-          <span>Flash</span>
-        </button>
-        <button className="mq-scan-action" onClick={() => fileRef.current?.click()}>
-          <span>
-            <ImageIcon size={26} />
-          </span>
-          <span>Scan from Gallery</span>
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => e.target.files?.length && scan()}
-        />
-      </div>
+      {step === "scan" ? (
+        <>
+          <div className="mq-scanner">
+            <video ref={videoRef} muted playsInline aria-label="Camera QR scanner" />
+            {!cameraActive && (
+              <div className="mq-scanner__placeholder">
+                <QrCode size={44} aria-hidden="true" />
+                <span>Start the camera and point it at your Maatram ID QR code</span>
+              </div>
+            )}
+            {cameraActive && <div className="mq-scanner__line" />}
+            {cameraActive && (
+              <div className="mq-scanner__status" role="status">
+                Point the camera at your Maatram ID QR code
+              </div>
+            )}
+          </div>
+          {scannerError && (
+            <p className="mq-auth-error" role="alert">
+              {scannerError}
+            </p>
+          )}
+          <div className="mq-scan-actions">
+            <button
+              className="mq-scan-action"
+              type="button"
+              aria-pressed={cameraActive || cameraStarting}
+              disabled={cameraStarting}
+              onClick={() => (cameraActive ? stopCamera() : void startCamera())}
+            >
+              <span>
+                <Camera size={26} />
+              </span>
+              <span>
+                {cameraStarting ? "Starting…" : cameraActive ? "Stop Camera" : "Start Camera"}
+              </span>
+            </button>
+            <button
+              className="mq-scan-action"
+              type="button"
+              onClick={() => fileRef.current?.click()}
+            >
+              <span>
+                <ImageIcon size={26} />
+              </span>
+              <span>Scan from Gallery</span>
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void scanImage(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className="mq-auth-link"
+            onClick={() => {
+              stopCamera();
+              setStep("credentials");
+            }}
+          >
+            Enter Maatram ID manually
+          </button>
+        </>
+      ) : (
+        <section className="mq-student-auth">
+          <h2>Verify your student account</h2>
+          <p>Use the password connected to your Maatram student account.</p>
+          <form onSubmit={(event) => void signIn(event)}>
+            <label>
+              <span>Maatram ID</span>
+              <input
+                autoComplete="username"
+                required
+                maxLength={30}
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value.toUpperCase())}
+              />
+            </label>
+            <label>
+              <span>Password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+            {error && (
+              <p className="mq-auth-error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="mq-auth-submit" type="submit" disabled={busy}>
+              {busy ? "Verifying…" : "Sign in"}
+            </button>
+          </form>
+          <button
+            type="button"
+            className="mq-auth-link"
+            onClick={() => {
+              setPassword("");
+              setError("");
+              scannedRef.current = false;
+              setStep("scan");
+            }}
+          >
+            Scan a different QR code
+          </button>
+        </section>
+      )}
     </Screen>
   );
 }

@@ -29,7 +29,7 @@ import { seo } from "@/lib/seo";
 import { useMaatramState } from "@/components/MaatramState";
 import { StudentNotifications } from "@/components/StudentNotifications";
 import { registerServiceWorker } from "@/lib/web-push";
-import { SOCKET_URL } from "@/lib/student-api";
+import { SOCKET_URL, STUDENT_TOKEN_KEY } from "@/lib/student-api";
 
 export const Route = createFileRoute("/dashboard")({
   head: () =>
@@ -71,16 +71,20 @@ function Dashboard() {
 
   // Socket.IO: live capacity/broadcast updates
   useEffect(() => {
-    const token = sessionStorage.getItem("maatram-student-notification-token");
+    const token = sessionStorage.getItem(STUDENT_TOKEN_KEY);
     if (!token) return;
     let active = true;
-    import("socket.io-client").then(({ io }) => {
-      if (!active) return;
-      const socket = io(SOCKET_URL, { auth: { token }, transports: ["websocket", "polling"] });
-      socketRef.current = socket;
-      socket.on("notification:new", () => setNotificationUnread((n) => n + 1));
-      socket.on("capacity:updated", () => { /* live slot updates handled by backend */ });
-    }).catch(() => undefined);
+    import("socket.io-client")
+      .then(({ io }) => {
+        if (!active) return;
+        const socket = io(SOCKET_URL, { auth: { token }, transports: ["websocket", "polling"] });
+        socketRef.current = socket;
+        socket.on("notification:new", () => setNotificationUnread((n) => n + 1));
+        socket.on("capacity:updated", () => {
+          /* live slot updates handled by backend */
+        });
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
       socketRef.current?.disconnect();
